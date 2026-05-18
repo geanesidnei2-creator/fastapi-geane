@@ -1,18 +1,18 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, File, UploadFile
 from sqlalchemy.orm import Session
 from database import SessionLocal, engine
 import models
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+from typing import Optional
 import cloudinary
 import cloudinary.uploader
-from fastapi import File, UploadFile
 import os
 
 cloudinary.config(
-    cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME"),
-    api_key = os.getenv("CLOUDINARY_API_KEY"),
-    api_secret = os.getenv("CLOUDINARY_API_SECRET")
+    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+    api_key=os.getenv("CLOUDINARY_API_KEY"),
+    api_secret=os.getenv("CLOUDINARY_API_SECRET")
 )
 
 models.Base.metadata.create_all(bind=engine)
@@ -29,9 +29,9 @@ app.add_middleware(
 
 class Produto(BaseModel):
     nome: str
-    preco: float
     categoria: str
-    imagem: str = None
+    preco: Optional[float] = None
+    imagem: Optional[str] = None
 
 def get_db():
     db = SessionLocal()
@@ -39,13 +39,6 @@ def get_db():
         yield db
     finally:
         db.close()
-from typing import Optional
-
-class Produto(BaseModel):
-    nome: str
-    categoria: str
-    preco: Optional[float] = None
-    imagem: Optional[str] = None        
 
 @app.get("/")
 def home():
@@ -64,24 +57,17 @@ def pegar_produto(produto_id: int, db: Session = Depends(get_db)):
 
 @app.post("/produtos")
 def criar_produto(produto: Produto, db: Session = Depends(get_db)):
-
-    if produto.preco is None and (produto.imagem is None or produto.imagem.strip() == ""):
-        return {"erro": "Você precisa informar o preço ou uma imagem!"}
-
     novo_produto = models.Produto(
         nome=produto.nome,
         preco=produto.preco,
         categoria=produto.categoria,
         imagem=produto.imagem
     )
-
     db.add(novo_produto)
     db.commit()
     db.refresh(novo_produto)
-
     return {"mensagem": "Produto criado com sucesso!", "produto": novo_produto}
 
-    
 @app.put("/produtos/{produto_id}")
 def atualizar_produto(produto_id: int, produto: Produto, db: Session = Depends(get_db)):
     p = db.query(models.Produto).filter(models.Produto.id == produto_id).first()
@@ -89,12 +75,13 @@ def atualizar_produto(produto_id: int, produto: Produto, db: Session = Depends(g
         p.nome = produto.nome
         p.preco = produto.preco
         p.categoria = produto.categoria
+        p.imagem = produto.imagem
         db.commit()
         db.refresh(p)
         return {"mensagem": "Produto atualizado com sucesso!", "produto": p}
     return {"erro": "Produto não encontrado"}
 
- @app.post("/upload")
+@app.post("/upload")
 async def upload_imagem(file: UploadFile = File(...)):
     resultado = cloudinary.uploader.upload(file.file)
     return {"url": resultado["secure_url"]}
