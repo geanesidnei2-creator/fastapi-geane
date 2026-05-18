@@ -4,6 +4,16 @@ from database import SessionLocal, engine
 import models
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+import cloudinary
+import cloudinary.uploader
+from fastapi import File, UploadFile
+import os
+
+cloudinary.config(
+    cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME"),
+    api_key = os.getenv("CLOUDINARY_API_KEY"),
+    api_secret = os.getenv("CLOUDINARY_API_SECRET")
+)
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -54,17 +64,24 @@ def pegar_produto(produto_id: int, db: Session = Depends(get_db)):
 
 @app.post("/produtos")
 def criar_produto(produto: Produto, db: Session = Depends(get_db)):
+
+    if produto.preco is None and (produto.imagem is None or produto.imagem.strip() == ""):
+        return {"erro": "Você precisa informar o preço ou uma imagem!"}
+
     novo_produto = models.Produto(
         nome=produto.nome,
         preco=produto.preco,
         categoria=produto.categoria,
         imagem=produto.imagem
     )
+
     db.add(novo_produto)
     db.commit()
     db.refresh(novo_produto)
+
     return {"mensagem": "Produto criado com sucesso!", "produto": novo_produto}
 
+    
 @app.put("/produtos/{produto_id}")
 def atualizar_produto(produto_id: int, produto: Produto, db: Session = Depends(get_db)):
     p = db.query(models.Produto).filter(models.Produto.id == produto_id).first()
@@ -76,6 +93,11 @@ def atualizar_produto(produto_id: int, produto: Produto, db: Session = Depends(g
         db.refresh(p)
         return {"mensagem": "Produto atualizado com sucesso!", "produto": p}
     return {"erro": "Produto não encontrado"}
+
+ @app.post("/upload")
+async def upload_imagem(file: UploadFile = File(...)):
+    resultado = cloudinary.uploader.upload(file.file)
+    return {"url": resultado["secure_url"]}
 
 @app.delete("/produtos/{produto_id}")
 def deletar_produto(produto_id: int, db: Session = Depends(get_db)):
